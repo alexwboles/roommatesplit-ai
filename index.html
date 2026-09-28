@@ -7,32 +7,52 @@
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-<header class="topbar">
-  <div class="brand"><span class="mark"></span>RoommateSplit AI</div>
-  <p class="tagline">Split the bills three ways, settle with one payment. No more spreadsheet detective work.</p>
+
+<header class="masthead">
+  <div class="mast-inner">
+    <div class="brand">
+      <span class="coin" aria-hidden="true">$</span>
+      <div class="brand-text">
+        <strong>RoommateSplit <em>AI</em></strong>
+        <p class="tagline">Split the bills three ways, settle with one payment. No more spreadsheet detective work.</p>
+      </div>
+    </div>
+    <div class="mast-note">Household ledger · exact to the cent</div>
+  </div>
 </header>
 
-<main class="layout">
-  <section class="panel">
-    <div class="panel-head"><h2>Roommates</h2><button id="add-rm">+ Add</button></div>
-    <div id="roommates"></div>
-    <p class="hint">Room size (sq ft) is only used for "by room size" splits — skip it if you split evenly.</p>
-  </section>
+<main class="ledger">
+  <div class="ledger-cols">
+    <section class="panel household" aria-label="Roommates">
+      <div class="panel-head">
+        <h2>Household</h2>
+        <button id="add-rm" class="add">+ Add roommate</button>
+      </div>
+      <div id="roommates"></div>
+      <p class="hint">Room size (sq ft) is only used for “by room size” splits — skip it if you split evenly.</p>
+    </section>
 
-  <section class="panel wide">
-    <div class="panel-head"><h2>Who owes whom</h2><button id="settle-all" class="ghost">Record all as paid</button></div>
-    <div id="balances"></div>
-    <h3>Simplest way to settle up</h3>
-    <div id="plan"></div>
+    <section class="panel settle" aria-label="Balances and settlement">
+      <div class="panel-head">
+        <h2>Who owes whom</h2>
+        <button id="settle-all" class="ghost">Record all as paid</button>
+      </div>
+      <div id="balances" class="balance-ledger"></div>
+      <h3 class="rail-title">Simplest way to settle up</h3>
+      <div id="plan" class="rail"></div>
+    </section>
+  </div>
+
+  <section class="panel bills-panel" aria-label="Shared bills">
+    <div class="panel-head">
+      <h2>Bill ledger</h2>
+      <button id="add-bill" class="add">+ Add bill</button>
+    </div>
+    <div id="bills"></div>
   </section>
 </main>
 
-<section class="panel full">
-  <div class="panel-head"><h2>Shared bills</h2><button id="add-bill">+ Add bill</button></div>
-  <div id="bills"></div>
-</section>
-
-<div id="modal" class="modal hidden">
+<div id="modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
   <div class="modal-card">
     <div class="modal-head"><h2 id="modal-title">Add</h2><button id="modal-close" class="icon-btn" aria-label="Close">✕</button></div>
     <div id="modal-body"></div>

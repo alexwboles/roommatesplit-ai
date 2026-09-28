@@ -26,6 +26,25 @@
     return f ? f.name : 'Someone';
   }
 
+  var AV_COLORS = ['#157347', '#a86a12', '#1d6f8a', '#7a4a8a', '#8a5a1d', '#2e7d5b'];
+  function avatarColor(name) {
+    var h = 0, s = String(name || '?');
+    for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 997;
+    return AV_COLORS[h % AV_COLORS.length];
+  }
+  function initials(name) {
+    var parts = String(name || '?').trim().split(/\s+/);
+    return (parts[0].charAt(0) + (parts.length > 1 ? parts[parts.length - 1].charAt(0) : '')).toUpperCase();
+  }
+
+  function dateBlock(dateStr) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(dateStr || ''));
+    if (!m) return '<div class="bill-date"><b>—</b>no date</div>';
+    var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '<div class="bill-date"><b>' + m[3].replace(/^0/, '') + '</b>' +
+      months[+m[2] - 1] + ' ' + m[1] + '</div>';
+  }
+
   function getState() {
     return {
       rms: load(LS_RM, []),
@@ -48,7 +67,9 @@
     st.rms.forEach(function (r) {
       var d = document.createElement('div');
       d.className = 'rm-row';
-      d.innerHTML = '<div><div class="nm">' + esc(r.name) + '</div>' +
+      d.innerHTML = '<span class="avatar" style="--av:' + avatarColor(r.name) + '" aria-hidden="true">' +
+        esc(initials(r.name)) + '</span>' +
+        '<div><div class="nm">' + esc(r.name) + '</div>' +
         '<div class="sz">' + (r.roomSize ? r.roomSize + ' sq ft room' : 'no room size') + '</div></div>' +
         '<div><button class="link-btn" data-edit-rm="' + r.id + '" aria-label="Edit">Edit</button>' +
         '<button class="icon-btn" data-del-rm="' + r.id + '" aria-label="Remove">✕</button></div>';
@@ -87,7 +108,7 @@
           : (v < -0.004 ? 'owes ' + S.money(-v) : 'all settled up');
         var d = document.createElement('div');
         d.className = 'bal-row';
-        d.innerHTML = '<div class="nm">' + esc(r.name) + '</div><div class="' + cls + '">' + txt + '</div><div></div>';
+        d.innerHTML = '<div class="nm">' + esc(r.name) + '</div><div class="' + cls + '">' + txt + '</div>';
         box.appendChild(d);
       });
     }
@@ -100,8 +121,11 @@
       plan.forEach(function (p, i) {
         var d = document.createElement('div');
         d.className = 'step';
-        d.innerHTML = '<div><b>' + esc(nameOf(st.rms, p.fromId)) + '</b> pays <b>' +
-          esc(nameOf(st.rms, p.toId)) + '</b> ' + S.money(p.amount) + '</div>' +
+        d.innerHTML = '<span class="step-n">' + (i + 1) + '</span>' +
+          '<div class="flow"><b>' + esc(nameOf(st.rms, p.fromId)) + '</b>' +
+          '<span class="arrow" aria-hidden="true">→</span>' +
+          '<b>' + esc(nameOf(st.rms, p.toId)) + '</b>' +
+          '<span class="amt">' + S.money(p.amount) + '</span></div>' +
           '<button class="small" data-pay="' + i + '">Mark paid ✓</button>';
         planBox.appendChild(d);
       });
@@ -132,14 +156,15 @@
     sorted.forEach(function (b) {
       var sh = S.shares(b, st.rms);
       var shareTxt = st.rms.map(function (r) {
-        return esc(r.name) + ' ' + S.money(sh[r.id] || 0);
+        return '<span class="who">' + esc(r.name) + '</span> ' + S.money(sh[r.id] || 0);
       }).join(' · ');
       var rule = b.splitRule === 'even' ? 'evenly' : (b.splitRule === 'bysize' ? 'by room size' : 'custom %');
       var d = document.createElement('div');
       d.className = 'bill' + (b.settled ? ' settled' : '');
-      d.innerHTML = '<div><h4>' + esc(b.name) + ' — ' + S.money(b.amount) + '</h4>' +
-        '<div class="meta">' + esc(b.date || '') + ' · paid by ' + esc(nameOf(st.rms, b.payerId)) +
-        ' · split ' + rule + (b.settled ? ' <span class="settled-pill">Settled</span>' : '') + '</div>' +
+      d.innerHTML = dateBlock(b.date) +
+        '<div><h4>' + esc(b.name) + ' <span class="bill-amt">' + S.money(b.amount) + '</span></h4>' +
+        '<div class="meta">paid by ' + esc(nameOf(st.rms, b.payerId)) +
+        ' · split ' + rule + (b.settled ? '<span class="settled-pill">Settled</span>' : '') + '</div>' +
         '<div class="shares">' + shareTxt + '</div></div>' +
         '<div class="bill-actions">' +
         '<button class="small" data-edit-bill="' + b.id + '">Edit</button>' +
@@ -176,7 +201,7 @@
   function closeModal() { el('modal').classList.add('hidden'); }
 
   function openRoommateModal(r) {
-    var isNew = !r.id;
+    var isNew = !r;
     r = r || S.blankRoommate();
     openModal(isNew ? 'Add roommate' : 'Edit roommate',
       '<label>Name *<input id="m-rm-name" value="' + esc(r.name) + '" maxlength="40"></label>' +
@@ -205,9 +230,9 @@
   }
 
   function openBillModal(b) {
-    var st = getState();
-    var isNew = !b.id;
+    var isNew = !b;
     b = b || S.blankBill();
+    var st = getState();
     if (!b.payerId && st.rms.length) b.payerId = st.rms[0].id;
     var payerOpts = st.rms.map(function (r) {
       return '<option value="' + r.id + '"' + (r.id === b.payerId ? ' selected' : '') + '>' +
