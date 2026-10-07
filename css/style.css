@@ -17,7 +17,7 @@
   --red: #b3402e;
   --red-soft: #fbe9e4;
   --amber: #a86a12;
-  --radius: 14px;
+  --radius: 0;
   --shadow: 0 1px 2px rgba(60, 50, 30, .06), 0 10px 28px rgba(60, 50, 30, .07);
   --shadow-sm: 0 1px 2px rgba(60, 50, 30, .08);
   --nums: "SF Mono", ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace;
@@ -67,7 +67,7 @@ body {
 .mast-note {
   font-size: .75rem; text-transform: uppercase; letter-spacing: .12em;
   color: #9fd3b4; border: 1px solid rgba(159, 211, 180, .4);
-  padding: .45rem .8rem; border-radius: 999px; white-space: nowrap;
+  padding: .45rem .8rem; border-radius: 0; white-space: nowrap;
 }
 
 /* ---------- ledger layout ---------- */
@@ -97,7 +97,7 @@ h3.rail-title {
 label { display: block; font-size: .85rem; font-weight: 550; color: var(--ink-soft); margin: .5rem 0; }
 input, select {
   width: 100%; padding: .6rem .75rem; margin-top: .3rem;
-  border: 1px solid var(--input-line); border-radius: 10px;
+  border: 1px solid var(--input-line); border-radius: 0;
   font: inherit; color: var(--ink); background: #fff;
   transition: border-color .15s, box-shadow .15s;
 }
@@ -106,7 +106,7 @@ input:focus, select:focus {
   box-shadow: 0 0 0 3px rgba(21, 115, 71, .15);
 }
 button {
-  background: var(--green); color: #fff; border: 0; border-radius: 10px;
+  background: var(--green); color: #fff; border: 0; border-radius: 0;
   padding: .62rem 1.05rem; font: inherit; font-weight: 650; font-size: .9rem;
   cursor: pointer; box-shadow: 0 1px 2px rgba(11, 61, 39, .3);
   transition: background .15s, transform .05s, box-shadow .15s;
@@ -165,7 +165,7 @@ button.link-btn:hover { background: var(--green-soft); }
 }
 .step {
   position: relative;
-  background: #fff; border: 1px solid var(--line); border-radius: 12px;
+  background: #fff; border: 1px solid var(--line); border-radius: 0;
   padding: .7rem .9rem; margin: 0 0 .6rem;
   display: grid; grid-template-columns: 1fr auto; gap: .7rem; align-items: center;
   box-shadow: var(--shadow-sm);
@@ -183,7 +183,7 @@ button.link-btn:hover { background: var(--green-soft); }
 .step .arrow { color: var(--green); font-weight: 800; margin: 0 .35rem; }
 .step .amt {
   font-family: var(--nums); font-weight: 700; color: var(--green-deep);
-  background: var(--green-soft); padding: .2rem .6rem; border-radius: 7px;
+  background: var(--green-soft); padding: .2rem .6rem; border-radius: 0;
   margin-left: .5rem; white-space: nowrap;
 }
 
@@ -200,7 +200,7 @@ button.link-btn:hover { background: var(--green-soft); }
 .bill-date {
   font-family: var(--nums); font-size: .76rem; color: var(--muted);
   text-align: center; line-height: 1.35;
-  border: 1px solid var(--line); border-radius: 9px; padding: .45rem .2rem;
+  border: 1px solid var(--line); border-radius: 0; padding: .45rem .2rem;
   background: #fff;
 }
 .bill-date b { display: block; font-size: 1.05rem; color: var(--ink); }
@@ -213,7 +213,7 @@ button.link-btn:hover { background: var(--green-soft); }
   display: inline-block; margin-left: .5rem;
   font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .08em;
   color: var(--green-deep); border: 2px solid var(--green);
-  padding: .1rem .5rem; border-radius: 6px;
+  padding: .1rem .5rem; border-radius: 0;
   transform: rotate(-4deg); opacity: .85;
 }
 .bill-actions { display: flex; gap: .35rem; }
@@ -221,7 +221,7 @@ button.link-btn:hover { background: var(--green-soft); }
   content: "SETTLED";
   position: absolute; right: 6.5rem; top: .8rem;
   font-size: .7rem; font-weight: 800; letter-spacing: .18em;
-  color: var(--green-deep); border: 2px solid var(--green-deep); border-radius: 6px;
+  color: var(--green-deep); border: 2px solid var(--green-deep); border-radius: 0;
   padding: .25rem .6rem; transform: rotate(-8deg); opacity: .5;
   pointer-events: none;
 }
@@ -237,7 +237,7 @@ button.link-btn:hover { background: var(--green-soft); }
 .modal.hidden { display: none; }
 .modal-card {
   background: var(--card); border: 1px solid var(--line);
-  border-radius: 18px; padding: 1.4rem 1.5rem;
+  border-radius: 0; padding: 1.4rem 1.5rem;
   width: 100%; max-width: 580px; box-shadow: var(--shadow);
   animation: riseIn .22s ease;
 }
@@ -259,7 +259,7 @@ button.link-btn:hover { background: var(--green-soft); }
 }
 
 footer { text-align: center; color: var(--muted); font-size: .8rem; padding: 1rem 1rem 2.2rem; }
-footer code { background: #efe9da; padding: .1rem .35rem; border-radius: 5px; font-size: .76rem; }
+footer code { background: #efe9da; padding: .1rem .35rem; border-radius: 0; font-size: .76rem; }
 
 @media (max-width: 920px) {
   .ledger-cols { grid-template-columns: 1fr; }
