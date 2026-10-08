@@ -6,6 +6,9 @@
   var LS_BILL = 'rmsplit.bills.v1';
   var LS_PAY = 'rmsplit.payments.v1';
 
+  // bill ledger search/filter/sort state (in-memory; ledger edits re-render it)
+  var billFilter = { q: '', payerId: '', sort: 'newest' };
+
   function load(k, fb) {
     try { var raw = localStorage.getItem(k); if (raw) return JSON.parse(raw); }
     catch (e) {}
@@ -26,8 +29,7 @@
     return f ? f.name : 'Someone';
   }
 
-  var AV_COLORS = ['#157347', '#a86a12', '#1d6f8a', '#7a4a8a', '#8a5a1d', '#2e7d5b'];
-  function avatarColor(name) {
+  var AV_COLORS = ['#157347', '#a86a12', '#1d6f8a', '#7a4a8a', '#8a5a1d', '#2e7d5b'];  function avatarColor(name) {
     var h = 0, s = String(name || '?');
     for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 997;
     return AV_COLORS[h % AV_COLORS.length];
@@ -57,6 +59,7 @@
     var st = getState();
     renderRoommates(st);
     renderBalances(st);
+    renderPayHistory(st);
     renderBills(st);
   }
 
@@ -141,18 +144,58 @@
       });
     }
     el('settle-all').style.display = plan.length ? '' : 'none';
+    el('copy-summary').style.display = plan.length ? '' : 'none';
+  }
+
+  function renderPayHistory(st) {
+    var box = el('payhist');
+    box.innerHTML = '';
+    if (!st.pays.length) {
+      box.innerHTML = '<div class="empty small-empty">No payments recorded yet — use “Mark paid” on a settlement step.</div>';
+      return;
+    }
+    st.pays.slice().reverse().forEach(function (p, ri) {
+      var idx = st.pays.length - 1 - ri;
+      var d = document.createElement('div');
+      d.className = 'pay-row';
+      d.innerHTML = '<span class="pay-date">' + esc(p.date || '') + '</span>' +
+        '<div class="pay-flow">' + esc(nameOf(st.rms, p.fromId)) +
+        '<span class="arrow" aria-hidden="true">→</span>' + esc(nameOf(st.rms, p.toId)) + '</div>' +
+        '<div class="pay-amt">' + S.money(p.amount) + '</div>' +
+        '<button class="icon-btn" data-undo-pay="' + idx + '" aria-label="Undo payment">↩</button>';
+      box.appendChild(d);
+    });
+    box.querySelectorAll('[data-undo-pay]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var pays = load(LS_PAY, []);
+        pays.splice(+b.getAttribute('data-undo-pay'), 1);
+        save(LS_PAY, pays);
+        render();
+      });
+    });
   }
 
   function renderBills(st) {
     var box = el('bills');
     box.innerHTML = '';
+    // payer filter options (preserve the current selection across renders)
+    var pf = el('bill-payer-filter');
+    var curSel = pf.options.length ? pf.value : billFilter.payerId;
+    pf.innerHTML = '<option value="">All payers</option>' + st.rms.map(function (r) {
+      return '<option value="' + r.id + '"' + (r.id === curSel ? ' selected' : '') + '>' +
+        esc(r.name) + '</option>';
+    }).join('');
+    billFilter.payerId = curSel;
+    var filtered = S.filterBills(st.bills, billFilter);
     if (!st.bills.length) {
       box.innerHTML = '<div class="empty">No bills yet. Add rent, utilities, groceries — whoever paid, however you split.</div>';
       return;
     }
-    var sorted = st.bills.slice().sort(function (a, b) {
-      return (a.settled ? 1 : 0) - (b.settled ? 1 : 0) || (b.date < a.date ? -1 : 1);
-    });
+    if (!filtered.length) {
+      box.innerHTML = '<div class="empty">No bills match your search — clear the filters to see the full ledger.</div>';
+      return;
+    }
+    var sorted = filtered;
     sorted.forEach(function (b) {
       var sh = S.shares(b, st.rms);
       var shareTxt = st.rms.map(function (r) {
@@ -168,6 +211,7 @@
         '<div class="shares">' + shareTxt + '</div></div>' +
         '<div class="bill-actions">' +
         '<button class="small" data-edit-bill="' + b.id + '">Edit</button>' +
+        '<button class="small ghost" data-repeat-bill="' + b.id + '">Repeat next month</button>' +
         '<button class="small ghost" data-toggle-bill="' + b.id + '">' +
         (b.settled ? 'Reopen' : 'Mark settled') + '</button></div>';
       box.appendChild(d);
@@ -185,6 +229,21 @@
         bills.forEach(function (x) {
           if (x.id === b.getAttribute('data-toggle-bill')) x.settled = !x.settled;
         });
+        save(LS_BILL, bills);
+        render();
+      });
+    });
+    box.querySelectorAll('[data-repeat-bill]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var bills = load(LS_BILL, []);
+        var src = null;
+        bills.forEach(function (x) { if (x.id === b.getAttribute('data-repeat-bill')) src = x; });
+        if (!src) return;
+        var nb = JSON.parse(JSON.stringify(src));
+        nb.id = S.uid('b');
+        nb.date = S.addMonths(src.date, 1);
+        nb.settled = false;
+        bills.push(nb);
         save(LS_BILL, bills);
         render();
       });
@@ -304,6 +363,45 @@
     return { rms: [a, s, j], bills: [b1, b2, b3], pays: [] };
   }
 
+  /* ---- clipboard + download helpers ---- */
+
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+  }
+
+  function copyText(text, btn) {
+    function done() {
+      var old = btn.textContent;
+      btn.textContent = 'Copied ✓';
+      setTimeout(function () { btn.textContent = old; }, 1600);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function () {
+        fallbackCopy(text); done();
+      });
+    } else {
+      fallbackCopy(text); done();
+    }
+  }
+
+  function downloadCSV(filename, text) {
+    var blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
+  }
+
   function init() {
     el('add-rm').addEventListener('click', function () { openRoommateModal(null); });
     el('add-bill').addEventListener('click', function () {
@@ -312,6 +410,28 @@
         return;
       }
       openBillModal(null);
+    });
+    // bill ledger search / filter / sort
+    el('bill-search').addEventListener('input', function () {
+      billFilter.q = el('bill-search').value;
+      renderBills(getState());
+    });
+    el('bill-payer-filter').addEventListener('change', function () {
+      billFilter.payerId = el('bill-payer-filter').value;
+      renderBills(getState());
+    });
+    el('bill-sort').addEventListener('change', function () {
+      billFilter.sort = el('bill-sort').value;
+      renderBills(getState());
+    });
+    el('export-csv').addEventListener('click', function () {
+      var st = getState();
+      downloadCSV('roommatesplit-bills.csv', S.billsCSV(st.rms, st.bills));
+    });
+    el('copy-summary').addEventListener('click', function () {
+      var st = getState();
+      var plan = S.settle(S.balances(st.rms, st.bills, st.pays));
+      copyText(S.summaryText(st.rms, plan), el('copy-summary'));
     });
     el('modal-close').addEventListener('click', closeModal);
     el('modal').addEventListener('click', function (e) {

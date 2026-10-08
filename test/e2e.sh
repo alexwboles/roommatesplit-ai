@@ -100,6 +100,82 @@ const byId = id => rms.find(r => r.id === id).name;
     : bad('flow7: inconsistent', JSON.stringify(net));
 }
 
+// Flow 8: undo a recorded payment (payment history) -> balances fully restored
+{
+  const net0 = S.balances(rms, bills, []);
+  const plan = S.settle(net0);
+  const pays = [{ fromId: plan[0].fromId, toId: plan[0].toId, amount: plan[0].amount,
+                  date: '2026-10-07' }];
+  const undone = pays.slice(0, 0); // undo = remove the recorded payment
+  const netRestored = S.balances(rms, bills, undone);
+  const same = Object.keys(net0).every(k => close(net0[k], netRestored[k]));
+  same ? ok('flow8: undoing a payment restores original balances')
+       : bad('flow8: balances not restored', JSON.stringify([net0, netRestored]));
+}
+
+// Flow 9: "Repeat next month" -> cloned bill lands on next month's date, balances shift accordingly
+{
+  const src = bills.find(b => b.id === 'b-rent');
+  const next = Object.assign({}, src, { id: 'b-rent-repeat', date: S.addMonths(src.date, 1), settled: false });
+  next.date === '2026-11-01'
+    ? ok('flow9: repeated rent lands on 2026-11-01')
+    : bad('flow9: repeat date wrong', next.date);
+  const net = S.balances(rms, bills.concat([next]), []);
+  // rent charged twice -> Sam/Jo each owe rent twice, Alex is owed more
+  const sh = S.shares(src, rms);
+  const netOnce = S.balances(rms, bills, []);
+  // repeating rent: the payer (Alex) is credited +amount and charged their share again
+  (close(net['r-alex'], netOnce['r-alex'] + src.amount - sh['r-alex']) &&
+   close(net['r-sam'], netOnce['r-sam'] - sh['r-sam']) &&
+   close(net['r-alex'] + net['r-sam'] + net['r-jo'], 0))
+    ? ok('flow9: repeated bill doubles rent shares, still nets to zero')
+    : bad('flow9: repeat math off', JSON.stringify(net));
+}
+
+// Flow 10: ledger search + sort on the sample household
+{
+  const q = S.filterBills(bills, { q: 'rent' });
+  (q.length === 1 && q[0].id === 'b-rent')
+    ? ok('flow10: searching "rent" finds the rent bill')
+    : bad('flow10: search off', JSON.stringify(q.map(b => b.id)));
+  const srt = S.filterBills(bills, { sort: 'amountDesc' });
+  (srt[0].id === 'b-rent' && srt[srt.length - 1].amount === 96.4)
+    ? ok('flow10: amount sort puts $2400 rent first')
+    : bad('flow10: sort off', JSON.stringify(srt.map(b => b.name)));
+  const pf = S.filterBills(bills, { payerId: 'r-jo' });
+  (pf.length === 1 && pf[0].id === 'b-groceries')
+    ? ok('flow10: payer filter shows only Jo\'s bill')
+    : bad('flow10: payer filter off', JSON.stringify(pf.map(b => b.id)));
+}
+
+// Flow 11: CSV export of the full sample ledger
+{
+  const csv = S.billsCSV(rms, bills);
+  const rows = csv.split('\n');
+  const headerOK = rows[0].indexOf('"Alex share"') > 0 && rows[0].indexOf('"Jo share"') > 0;
+  const dataRows = rows.slice(1);
+  const reconcile = dataRows.every((row, i) => {
+    const cols = row.match(/"[^"]*"/g).map(s => s.slice(1, -1));
+    const sum = cols.slice(6).map(Number).reduce((x, y) => x + y, 0);
+    return close(sum, bills[i].amount) && cols[5] === 'open';
+  });
+  (rows.length === bills.length + 1 && headerOK && reconcile)
+    ? ok('flow11: CSV exports full ledger, shares reconcile to totals')
+    : bad('flow11: CSV off', csv.slice(0, 200));
+}
+
+// Flow 12: settlement summary text for the sample plan
+{
+  const plan = S.settle(S.balances(rms, bills, []));
+  const txt = S.summaryText(rms, plan);
+  const lines = txt.split('\n');
+  (lines.length === plan.length + 2 &&
+   lines[1].indexOf('Sam') > 0 && lines[1].indexOf('Alex') > 0 &&
+   lines[lines.length - 1].indexOf('$1,328.94') > 0)
+    ? ok('flow12: summary text lists named payments + correct total')
+    : bad('flow12: summary off', txt);
+}
+
 console.log('---');
 console.log('E2E PASS: ' + pass + '  FAIL: ' + fail);
 process.exit(fail ? 1 : 0);

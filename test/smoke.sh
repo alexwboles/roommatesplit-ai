@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# RoommateSplit AI — smoke tests (10 checks).
+# RoommateSplit AI — smoke tests (14 shell checks + node logic suite).
 set -u
 cd "$(dirname "$0")/.."
 pass=0; fail=0
@@ -12,6 +12,22 @@ bad()  { fail=$((fail+1)); echo "FAIL: $1"; }
 [ -f js/app.js ]             && ok "js/app.js exists"             || bad "js/app.js exists"
 [ -f data/sample.json ]      && ok "data/sample.json exists"      || bad "data/sample.json missing"
 [ -f README.md ]             && ok "README.md exists"             || bad "README.md missing"
+
+# new UI hooks for the 5 functionality improvements
+for id in export-csv copy-summary bill-search bill-payer-filter bill-sort payhist; do
+  grep -q "id=\"$id\"" index.html && ok "index.html has #$id" || bad "index.html missing #$id"
+done
+grep -q 'filterBills' js/app.js && grep -q 'renderPayHistory' js/app.js && \
+grep -q 'addMonths' js/app.js && grep -q 'summaryText' js/app.js && \
+grep -q 'billsCSV' js/app.js \
+  && ok "app.js wires the 5 new features" || bad "app.js missing new feature wiring"
+
+# no rounded rectangles (no-radius design rule: 50% circles only, 0 elsewhere)
+if grep -Eo 'border-radius:[^;}]*' css/style.css | grep -Ev ':\s*(0|50%|var\(--radius\))\s*$' | grep -q .; then
+  bad "css/style.css has rounded (non-0, non-circle) border-radius"
+else
+  ok "no rounded rectangles in css/style.css"
+fi
 
 # scripts load in dependency order: engine before UI
 if grep -q 'split.js' index.html && grep -q 'app.js' index.html && \
@@ -45,6 +61,7 @@ fi
 # core logic assertions on the exact engine the UI uses
 node_out=$(node - <<'NODE' 2>&1
 const S = require('./js/split.js');
+const sample = require('./data/sample.json');
 let n = 0, f = 0;
 function eq(a, b, label) {
   if (Math.abs(a - b) < 0.005) { n++; console.log('PASS: ' + label); }
@@ -91,6 +108,55 @@ badBills.forEach(([b, label]) => {
 });
 if (S.money(1234567.891) === '$1,234,567.89') { n++; console.log('PASS: money formats with commas'); }
 else { f++; console.log('FAIL: money format got ' + S.money(1234567.891)); }
+
+// billsCSV: header + one row per bill; share columns reconcile to bill totals
+const csvRms = sample.roommates, csvBills = sample.bills;
+const csv = S.billsCSV(csvRms, csvBills);
+const lines = csv.split('\n');
+eq(lines.length, csvBills.length + 1, 'CSV has header + one row per bill');
+let csvOK = true;
+csvBills.forEach((b, i) => {
+  const cols = lines[i + 1].match(/"[^"]*"/g).map(s => s.slice(1, -1));
+  const shareCols = cols.slice(6).map(Number);
+  if (Math.abs(shareCols.reduce((x, y) => x + y, 0) - b.amount) > 0.005) csvOK = false;
+  if (cols[0] !== b.name || cols[3] !== Number(b.amount).toFixed(2)) csvOK = false;
+});
+if (lines[0].indexOf('"Alex share"') > 0 && lines[0].indexOf('"Bill","Date"') === 0 && csvOK) {
+  n++; console.log('PASS: CSV header + rows reconcile to bill totals');
+} else { f++; console.log('FAIL: CSV rows malformed'); }
+
+// summaryText formatting
+const st = S.summaryText(rms, plan);
+if (st.indexOf(' pays ') > 0 && st.indexOf('Total changing hands:') > 0 &&
+    st.split('\n').length === plan.length + 2) { n++; console.log('PASS: summaryText lists payments + total'); }
+else { f++; console.log('FAIL: summaryText format: ' + JSON.stringify(st)); }
+if (S.summaryText(rms, []).indexOf('settled up') > 0) { n++; console.log('PASS: summaryText empty-plan message'); }
+else { f++; console.log('FAIL: summaryText empty plan'); }
+
+// addMonths edge cases
+eq(S.addMonths('2026-10-01', 1) === '2026-11-01' ? 1 : 0, 1, 'addMonths normal case');
+eq(S.addMonths('2026-12-15', 1) === '2027-01-15' ? 1 : 0, 1, 'addMonths rolls the year');
+eq(S.addMonths('2026-01-31', 1) === '2026-02-28' ? 1 : 0, 1, 'addMonths clamps to Feb 28');
+eq(S.addMonths('bogus', 1) === '' ? 1 : 0, 1, 'addMonths rejects bad input');
+
+// filterBills search / filter / sort
+const fb = [
+  { name: 'Rent', amount: 2400, payerId: 'a', settled: false, date: '2026-10-01' },
+  { name: 'Electric', amount: 96.4, payerId: 'b', settled: false, date: '2026-09-20' },
+  { name: 'Old settled', amount: 50, payerId: 'a', settled: true, date: '2026-08-01' },
+];
+const fq = S.filterBills(fb, { q: 'rent' });
+if (fq.length === 1 && fq[0].name === 'Rent') { n++; console.log('PASS: filterBills text search'); }
+else { f++; console.log('FAIL: filterBills search'); }
+const fp = S.filterBills(fb, { payerId: 'a' });
+if (fp.length === 2 && fp.every(x => x.payerId === 'a')) { n++; console.log('PASS: filterBills payer filter'); }
+else { f++; console.log('FAIL: filterBills payer'); }
+const fs2 = S.filterBills(fb, { sort: 'amountDesc' });
+if (fs2[0].name === 'Rent' && fs2[fs2.length - 1].settled) { n++; console.log('PASS: filterBills amount sort, settled last'); }
+else { f++; console.log('FAIL: filterBills sort: ' + JSON.stringify(fs2.map(x => x.name))); }
+const fs3 = S.filterBills(fb, { sort: 'oldest' });
+if (fs3[0].name === 'Electric' && fs3[1].name === 'Rent') { n++; console.log('PASS: filterBills oldest sort'); }
+else { f++; console.log('FAIL: filterBills oldest'); }
 process.exit(f ? 1 : 0);
 NODE
 )

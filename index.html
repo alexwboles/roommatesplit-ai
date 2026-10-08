@@ -35,18 +35,37 @@
     <section class="panel settle" aria-label="Balances and settlement">
       <div class="panel-head">
         <h2>Who owes whom</h2>
-        <button id="settle-all" class="ghost">Record all as paid</button>
+        <div class="head-btns">
+          <button id="copy-summary" class="ghost">Copy summary</button>
+          <button id="settle-all" class="ghost">Record all as paid</button>
+        </div>
       </div>
       <div id="balances" class="balance-ledger"></div>
       <h3 class="rail-title">Simplest way to settle up</h3>
       <div id="plan" class="rail"></div>
+      <h3 class="rail-title">Recorded payments</h3>
+      <div id="payhist"></div>
     </section>
   </div>
 
   <section class="panel bills-panel" aria-label="Shared bills">
     <div class="panel-head">
       <h2>Bill ledger</h2>
-      <button id="add-bill" class="add">+ Add bill</button>
+      <div class="head-btns">
+        <button id="export-csv" class="ghost">Export CSV</button>
+        <button id="add-bill" class="add">+ Add bill</button>
+      </div>
+    </div>
+    <div class="ledger-tools">
+      <input id="bill-search" type="search" placeholder="Search bills…" aria-label="Search bills">
+      <select id="bill-payer-filter" aria-label="Filter by payer"></select>
+      <select id="bill-sort" aria-label="Sort bills">
+        <option value="newest">Newest first</option>
+        <option value="oldest">Oldest first</option>
+        <option value="amountDesc">Amount: high → low</option>
+        <option value="amountAsc">Amount: low → high</option>
+        <option value="name">Name A–Z</option>
+      </select>
     </div>
     <div id="bills"></div>
   </section>

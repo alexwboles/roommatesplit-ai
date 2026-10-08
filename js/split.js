@@ -175,6 +175,90 @@
   function totalOwedTo(net, id) { return Math.max(0, round2(num(net[id], 0))); }
   function totalOwes(net, id) { return Math.max(0, round2(-num(net[id], 0))); }
 
+  function csvCell(v) {
+    return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  }
+
+  /* Export the bill ledger as CSV: header + one row per bill with
+   * per-roommate exact shares. Pure — used by the UI download button
+   * and exercised directly by the tests. */
+  function billsCSV(roommates, bills) {
+    var header = ['Bill', 'Date', 'Payer', 'Amount', 'Split rule', 'Status'];
+    roommates.forEach(function (r) { header.push(r.name + ' share'); });
+    var lines = [header.map(csvCell).join(',')];
+    (bills || []).forEach(function (b) {
+      var sh = shares(b, roommates);
+      var payer = '';
+      roommates.forEach(function (r) { if (r.id === b.payerId) payer = r.name; });
+      var rule = b.splitRule === 'bysize' ? 'by room size'
+        : (b.splitRule === 'custom' ? 'custom %' : 'even');
+      var row = [b.name, b.date || '', payer,
+                 round2(num(b.amount, 0)).toFixed(2), rule,
+                 b.settled ? 'settled' : 'open'];
+      roommates.forEach(function (r) {
+        row.push(round2(num(sh[r.id], 0)).toFixed(2));
+      });
+      lines.push(row.map(csvCell).join(','));
+    });
+    return lines.join('\n');
+  }
+
+  /* Plain-text settlement summary for sharing in chat/email/messaging.
+   * Pure — used by the copy-summary button and exercised by tests. */
+  function summaryText(roommates, plan) {
+    if (!plan || !plan.length)
+      return 'RoommateSplit: everyone is settled up. Nothing is owed.';
+    var nm = {};
+    roommates.forEach(function (r) { nm[r.id] = r.name; });
+    var lines = ['RoommateSplit settlement plan:'];
+    var total = 0;
+    plan.forEach(function (p, i) {
+      lines.push((i + 1) + '. ' + (nm[p.fromId] || 'Someone') + ' pays ' +
+        (nm[p.toId] || 'Someone') + ' ' + money(p.amount));
+      total = round2(total + num(p.amount, 0));
+    });
+    lines.push('Total changing hands: ' + money(total));
+    return lines.join('\n');
+  }
+
+  /* Add n months to a YYYY-MM-DD date, clamping to the last day of the
+   * target month (so Jan 31 -> Feb 28). Returns '' for bad input. */
+  function addMonths(dateStr, n) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateStr || ''));
+    if (!m) return '';
+    var y = +m[1], mo = (+m[2] - 1) + (n | 0), d = +m[3];
+    y += Math.floor(mo / 12);
+    mo = ((mo % 12) + 12) % 12;
+    var last = new Date(y, mo + 1, 0).getDate();
+    d = Math.min(d, last);
+    function p2(x) { return String(x).padStart(2, '0'); }
+    return y + '-' + p2(mo + 1) + '-' + p2(d);
+  }
+
+  /* Filter + sort the bill ledger. opts: { q, payerId, sort }.
+   * sort: 'newest' (default) | 'oldest' | 'amountDesc' | 'amountAsc' | 'name'.
+   * Unsettled bills always sort above settled ones. Pure. */
+  function filterBills(bills, opts) {
+    opts = opts || {};
+    var q = String(opts.q || '').trim().toLowerCase();
+    var by = opts.sort || 'newest';
+    var list = (bills || []).filter(function (b) {
+      if (opts.payerId && b.payerId !== opts.payerId) return false;
+      if (q && String(b.name || '').toLowerCase().indexOf(q) < 0) return false;
+      return true;
+    });
+    list.sort(function (a, b) {
+      var open = (a.settled ? 1 : 0) - (b.settled ? 1 : 0);
+      if (open) return open;
+      if (by === 'amountDesc') return num(b.amount, 0) - num(a.amount, 0);
+      if (by === 'amountAsc') return num(a.amount, 0) - num(b.amount, 0);
+      if (by === 'name') return String(a.name).localeCompare(String(b.name));
+      if (by === 'oldest') return (a.date || '') < (b.date || '') ? -1 : 1;
+      return (a.date || '') < (b.date || '') ? -1 : 1; // newest first
+    });
+    return list;
+  }
+
   return {
     SPLIT_RULES: SPLIT_RULES,
     num: num,
@@ -188,6 +272,10 @@
     balances: balances,
     settle: settle,
     totalOwedTo: totalOwedTo,
-    totalOwes: totalOwes
+    totalOwes: totalOwes,
+    billsCSV: billsCSV,
+    summaryText: summaryText,
+    addMonths: addMonths,
+    filterBills: filterBills
   };
 }));

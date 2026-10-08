@@ -20,6 +20,10 @@ all in your browser, all your data stays on your device.
 - **Settle per person or all at once** — "Mark paid" on individual steps, or
   "Record all as paid" to clear the whole plan
 - **Settle / reopen bills** — park bills you've already handled outside the household
+- **Repeat next month** — one click clones a bill (rent, utilities) into next month with the date advanced
+- **Bill search, filter & sort** — find bills by name, filter by payer, sort by date/amount/name
+- **Recorded payments** — every "Mark paid" is listed with date and amount; undo a payment anytime
+- **Export & share** — download the ledger as CSV; copy the settlement plan as plain text for chat/email
 
 ## Getting started
 
