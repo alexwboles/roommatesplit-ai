@@ -296,3 +296,28 @@ footer code { background: #efe9da; padding: .1rem .35rem; border-radius: 0; font
   .modal { padding: 1rem .75rem; }
   .grid2 { grid-template-columns: 1fr; }
 }
+
+/* ---------- categories + overdue (sharp edges throughout) ---------- */
+.cat-pill {
+  display: inline-block; font-size: .68rem; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--ink-soft); border: 1px solid var(--line);
+  padding: .08rem .45rem; border-radius: 0; background: var(--paper);
+}
+.overdue-pill {
+  display: inline-block; margin-left: .5rem; font-size: .68rem; font-weight: 800;
+  text-transform: uppercase; letter-spacing: .08em; color: #fff; background: #b3402a;
+  padding: .1rem .5rem; border-radius: 0;
+}
+.bill.overdue { border-left: 4px solid #b3402a; }
+.overdue-banner {
+  border: 2px solid #b3402a; background: #fdf1ee; color: #7d2c1d;
+  padding: .7rem .9rem; margin-bottom: .8rem; font-size: .88rem; border-radius: 0;
+}
+.cat-row {
+  border: 1px solid var(--line); background: var(--paper); border-radius: 0;
+  padding: .6rem .75rem; margin-bottom: .5rem;
+}
+.cat-name { font-weight: 700; font-size: .9rem; display: flex; justify-content: space-between; align-items: baseline; }
+.cat-count { font-size: .72rem; color: var(--muted); font-weight: 400; }
+.cat-total { font-family: var(--nums); font-size: 1.25rem; font-weight: 700; color: var(--green-ink); margin-top: .15rem; }
+.cat-split { font-size: .78rem; color: var(--ink-soft); margin-top: .25rem; font-variant-numeric: tabular-nums; }

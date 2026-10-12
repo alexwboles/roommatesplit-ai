@@ -7,7 +7,7 @@
   var LS_PAY = 'rmsplit.payments.v1';
 
   // bill ledger search/filter/sort state (in-memory; ledger edits re-render it)
-  var billFilter = { q: '', payerId: '', sort: 'newest' };
+  var billFilter = { q: '', payerId: '', category: '', sort: 'newest' };
 
   function load(k, fb) {
     try { var raw = localStorage.getItem(k); if (raw) return JSON.parse(raw); }
@@ -60,7 +60,31 @@
     renderRoommates(st);
     renderBalances(st);
     renderPayHistory(st);
+    renderCategories(st);
     renderBills(st);
+  }
+
+  function renderCategories(st) {
+    var box = el('categories');
+    box.innerHTML = '';
+    var rows = S.categoryTotals(st.rms, st.bills);
+    if (!rows.length) {
+      box.innerHTML = '<div class="empty small-empty">No bills yet — categories appear here.</div>';
+      return;
+    }
+    rows.forEach(function (c) {
+      var perPerson = st.rms.map(function (r) {
+        var amt = S.num(c.perPerson[r.id], 0);
+        return amt > 0 ? '<span class="who">' + esc(r.name) + '</span> ' + S.money(amt) : '';
+      }).filter(Boolean).join(' · ');
+      var d = document.createElement('div');
+      d.className = 'cat-row';
+      d.innerHTML = '<div class="cat-name">' + esc(c.label) +
+        '<span class="cat-count">' + c.count + ' bill' + (c.count === 1 ? '' : 's') + '</span></div>' +
+        '<div class="cat-total">' + S.money(c.total) + '</div>' +
+        (perPerson ? '<div class="cat-split">' + perPerson + '</div>' : '');
+      box.appendChild(d);
+    });
   }
 
   function renderRoommates(st) {
@@ -74,9 +98,19 @@
         esc(initials(r.name)) + '</span>' +
         '<div><div class="nm">' + esc(r.name) + '</div>' +
         '<div class="sz">' + (r.roomSize ? r.roomSize + ' sq ft room' : 'no room size') + '</div></div>' +
-        '<div><button class="link-btn" data-edit-rm="' + r.id + '" aria-label="Edit">Edit</button>' +
+        '<div><button class="link-btn" data-stmt-rm="' + r.id + '" title="Copy a plain-text statement for this person">Statement</button>' +
+        '<button class="link-btn" data-edit-rm="' + r.id + '" aria-label="Edit">Edit</button>' +
         '<button class="icon-btn" data-del-rm="' + r.id + '" aria-label="Remove">✕</button></div>';
       box.appendChild(d);
+    });
+    box.querySelectorAll('[data-stmt-rm]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var st2 = getState();
+        var r = null;
+        st2.rms.forEach(function (x) { if (x.id === b.getAttribute('data-stmt-rm')) r = x; });
+        if (!r) return;
+        copyText(S.statementText(r, st2.rms, st2.bills, st2.pays), b);
+      });
     });
     box.querySelectorAll('[data-del-rm]').forEach(function (b) {
       b.addEventListener('click', function () {
@@ -178,6 +212,18 @@
   function renderBills(st) {
     var box = el('bills');
     box.innerHTML = '';
+    // overdue banner
+    var overdue = S.overdueBills(st.bills);
+    if (overdue.length) {
+      var total = overdue.reduce(function (s, b) { return S.num(s, 0) + S.num(b.amount, 0); }, 0);
+      var alert = document.createElement('div');
+      alert.className = 'overdue-banner';
+      alert.innerHTML = '<strong>' + overdue.length + ' overdue bill' + (overdue.length === 1 ? '' : 's') +
+        '</strong> — ' + S.money(total) + ' past due: ' +
+        overdue.slice(0, 3).map(function (b) { return esc(b.name) + ' (due ' + esc(b.dueDate) + ')'; }).join(', ') +
+        (overdue.length > 3 ? ' +' + (overdue.length - 3) + ' more' : '');
+      box.appendChild(alert);
+    }
     // payer filter options (preserve the current selection across renders)
     var pf = el('bill-payer-filter');
     var curSel = pf.options.length ? pf.value : billFilter.payerId;
@@ -186,6 +232,14 @@
         esc(r.name) + '</option>';
     }).join('');
     billFilter.payerId = curSel;
+    // category filter options (preserve selection across renders)
+    var cf = el('bill-cat-filter');
+    var curCat = cf.options.length ? cf.value : billFilter.category;
+    cf.innerHTML = '<option value="">All categories</option>' + S.BILL_CATEGORIES.map(function (c) {
+      return '<option value="' + c.id + '"' + (c.id === curCat ? ' selected' : '') + '>' +
+        esc(c.label) + '</option>';
+    }).join('');
+    billFilter.category = curCat;
     var filtered = S.filterBills(st.bills, billFilter);
     if (!st.bills.length) {
       box.innerHTML = '<div class="empty">No bills yet. Add rent, utilities, groceries — whoever paid, however you split.</div>';
@@ -202,12 +256,18 @@
         return '<span class="who">' + esc(r.name) + '</span> ' + S.money(sh[r.id] || 0);
       }).join(' · ');
       var rule = b.splitRule === 'even' ? 'evenly' : (b.splitRule === 'bysize' ? 'by room size' : 'custom %');
+      var isOverdue = !b.settled && /^\d{4}-\d{2}-\d{2}$/.test(String(b.dueDate || '')) &&
+        b.dueDate < new Date().toISOString().slice(0, 10);
       var d = document.createElement('div');
-      d.className = 'bill' + (b.settled ? ' settled' : '');
+      d.className = 'bill' + (b.settled ? ' settled' : '') + (isOverdue ? ' overdue' : '');
       d.innerHTML = dateBlock(b.date) +
         '<div><h4>' + esc(b.name) + ' <span class="bill-amt">' + S.money(b.amount) + '</span></h4>' +
         '<div class="meta">paid by ' + esc(nameOf(st.rms, b.payerId)) +
-        ' · split ' + rule + (b.settled ? '<span class="settled-pill">Settled</span>' : '') + '</div>' +
+        ' · split ' + rule +
+        ' · <span class="cat-pill">' + esc(S.categoryLabel(S.normalizeCategory(b.category))) + '</span>' +
+        (b.dueDate ? ' · due ' + esc(b.dueDate) : '') +
+        (isOverdue ? ' <span class="overdue-pill">OVERDUE</span>' : '') +
+        (b.settled ? '<span class="settled-pill">Settled</span>' : '') + '</div>' +
         '<div class="shares">' + shareTxt + '</div></div>' +
         '<div class="bill-actions">' +
         '<button class="small" data-edit-bill="' + b.id + '">Edit</button>' +
@@ -306,12 +366,18 @@
       return '<div class="custom-grid"><span>' + esc(r.name) + '</span>' +
         '<input type="number" min="0" max="100" step="1" data-cpct="' + r.id + '" value="' + v + '"></div>';
     }).join('');
+    var catOpts = S.BILL_CATEGORIES.map(function (c) {
+      return '<option value="' + c.id + '"' + (S.normalizeCategory(b.category) === c.id ? ' selected' : '') + '>' +
+        esc(c.label) + '</option>';
+    }).join('');
     openModal(isNew ? 'Add bill' : 'Edit bill',
       '<div class="grid2">' +
       '<label>Bill name *<input id="m-b-name" value="' + esc(b.name) + '" maxlength="60"></label>' +
       '<label>Amount ($) *<input id="m-b-amt" type="number" min="0" step="0.01" value="' + (b.amount || '') + '"></label>' +
       '<label>Date<input id="m-b-date" type="date" value="' + esc(b.date || '') + '"></label>' +
+      '<label>Due date (optional)<input id="m-b-due" type="date" value="' + esc(b.dueDate || '') + '"></label>' +
       '<label>Paid by<select id="m-b-payer">' + payerOpts + '</select></label>' +
+      '<label>Category<select id="m-b-cat">' + catOpts + '</select></label>' +
       '</div>' +
       '<label>Split rule<select id="m-b-rule">' + ruleOpts + '</select></label>' +
       '<div id="m-custom" style="display:' + (b.splitRule === 'custom' ? '' : 'none') + '">' +
@@ -326,6 +392,8 @@
       b.name = el('m-b-name').value.trim();
       b.amount = S.num(el('m-b-amt').value, 0);
       b.date = el('m-b-date').value;
+      b.dueDate = el('m-b-due').value;
+      b.category = S.normalizeCategory(el('m-b-cat').value);
       b.payerId = el('m-b-payer').value;
       b.splitRule = el('m-b-rule').value;
       b.customShares = {};
@@ -418,6 +486,10 @@
     });
     el('bill-payer-filter').addEventListener('change', function () {
       billFilter.payerId = el('bill-payer-filter').value;
+      renderBills(getState());
+    });
+    el('bill-cat-filter').addEventListener('change', function () {
+      billFilter.category = el('bill-cat-filter').value;
       renderBills(getState());
     });
     el('bill-sort').addEventListener('change', function () {

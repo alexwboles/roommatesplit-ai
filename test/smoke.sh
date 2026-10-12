@@ -14,13 +14,19 @@ bad()  { fail=$((fail+1)); echo "FAIL: $1"; }
 [ -f README.md ]             && ok "README.md exists"             || bad "README.md missing"
 
 # new UI hooks for the 5 functionality improvements
-for id in export-csv copy-summary bill-search bill-payer-filter bill-sort payhist; do
+for id in export-csv copy-summary bill-search bill-payer-filter bill-cat-filter bill-sort payhist categories; do
   grep -q "id=\"$id\"" index.html && ok "index.html has #$id" || bad "index.html missing #$id"
 done
 grep -q 'filterBills' js/app.js && grep -q 'renderPayHistory' js/app.js && \
 grep -q 'addMonths' js/app.js && grep -q 'summaryText' js/app.js && \
 grep -q 'billsCSV' js/app.js \
   && ok "app.js wires the 5 new features" || bad "app.js missing new feature wiring"
+grep -q 'categoryTotals' js/app.js && grep -q 'overdueBills' js/app.js && \
+grep -q 'statementText' js/app.js && grep -q 'renderCategories' js/app.js && \
+grep -q 'normalizeCategory' js/app.js \
+  && ok "app.js wires categories / overdue / statements" || bad "app.js missing improvement wiring"
+grep -q 'cat-pill' css/style.css && grep -q 'overdue-banner' css/style.css && grep -q 'cat-row' css/style.css \
+  && ok "category + overdue styles present" || bad "improvement styles missing"
 
 # no rounded rectangles (no-radius design rule: 50% circles only, 0 elsewhere)
 if grep -Eo 'border-radius:[^;}]*' css/style.css | grep -Ev ':\s*(0|50%|var\(--radius\))\s*$' | grep -q .; then
@@ -157,6 +163,54 @@ else { f++; console.log('FAIL: filterBills sort: ' + JSON.stringify(fs2.map(x =>
 const fs3 = S.filterBills(fb, { sort: 'oldest' });
 if (fs3[0].name === 'Electric' && fs3[1].name === 'Rent') { n++; console.log('PASS: filterBills oldest sort'); }
 else { f++; console.log('FAIL: filterBills oldest'); }
+
+// ---- categories, overdue, statements (new) ----
+// normalizeCategory: known ids pass through, junk -> 'other'
+eq(S.normalizeCategory('rent') === 'rent' ? 1 : 0, 1, 'normalizeCategory rent');
+eq(S.normalizeCategory('GROCERIES') === 'groceries' ? 1 : 0, 1, 'normalizeCategory case-insensitive');
+eq(S.normalizeCategory('carrier pigeon') === 'other' ? 1 : 0, 1, 'normalizeCategory junk -> other');
+eq(S.normalizeCategory('') === 'other' ? 1 : 0, 1, 'normalizeCategory empty -> other');
+eq(S.categoryLabel('internet') === 'Internet' ? 1 : 0, 1, 'categoryLabel');
+// filterBills category filter
+const fb2 = [
+  { name: 'Rent', amount: 2400, payerId: 'a', settled: false, date: '2026-10-01', category: 'rent' },
+  { name: 'Electric', amount: 96.4, payerId: 'b', settled: false, date: '2026-09-20', category: 'utilities' },
+  { name: 'Mystery', amount: 10, payerId: 'a', settled: false, date: '2026-09-01' },
+];
+const fc = S.filterBills(fb2, { category: 'utilities' });
+eq(fc.length === 1 && fc[0].name === 'Electric' ? 1 : 0, 1, 'filterBills category filter');
+const fc2 = S.filterBills(fb2, { category: 'other' });
+eq(fc2.length === 1 && fc2[0].name === 'Mystery' ? 1 : 0, 1, 'filterBills uncategorized -> other');
+// categoryTotals: biggest first, per-person shares, includes settled bills
+const cr1 = { id: 'a', name: 'A' }, cr2 = { id: 'b', name: 'B' };
+const ct = S.categoryTotals([cr1, cr2], [
+  { name: 'Rent', amount: 1000, payerId: 'a', splitRule: 'even', category: 'rent', settled: false, date: '2026-10-01' },
+  { name: 'Wifi', amount: 60, payerId: 'b', splitRule: 'even', category: 'internet', settled: false, date: '2026-10-01' },
+  { name: 'Old rent', amount: 1000, payerId: 'a', splitRule: 'even', category: 'rent', settled: true, date: '2026-09-01' },
+]);
+eq(ct.length === 2 ? 1 : 0, 1, 'categoryTotals two categories');
+eq(ct[0].category === 'rent' && ct[0].total === 2000 && ct[0].count === 2 ? 1 : 0, 1, 'categoryTotals rent includes settled');
+eq(ct[0].perPerson.a === 1000 && ct[0].perPerson.b === 1000 ? 1 : 0, 1, 'categoryTotals per-person shares');
+eq(ct[1].category === 'internet' && ct[1].total === 60 ? 1 : 0, 1, 'categoryTotals second category');
+eq(S.categoryTotals([cr1], []).length === 0 ? 1 : 0, 1, 'categoryTotals empty');
+// overdueBills: open + past due only, oldest first
+const ob = S.overdueBills([
+  { name: 'Late', amount: 100, settled: false, dueDate: '2026-09-01' },
+  { name: 'Later', amount: 100, settled: false, dueDate: '2026-10-01' },
+  { name: 'Future', amount: 100, settled: false, dueDate: '2026-12-01' },
+  { name: 'Settled late', amount: 100, settled: true, dueDate: '2026-08-01' },
+  { name: 'No due date', amount: 100, settled: false, dueDate: '' },
+], '2026-10-12');
+eq(ob.length === 2 && ob[0].name === 'Late' && ob[1].name === 'Later' ? 1 : 0, 1, 'overdueBills open+past-due, oldest first');
+// statementText: paid lines, share lines, net verdict
+const stmt = S.statementText(cr2, [cr1, cr2], [
+  { name: 'Rent', amount: 1000, payerId: 'a', splitRule: 'even', category: 'rent', settled: false, date: '2026-10-01' },
+  { name: 'Wifi', amount: 60, payerId: 'b', splitRule: 'even', category: 'internet', settled: false, date: '2026-10-01' },
+]);
+eq(stmt.indexOf('RoommateSplit statement for B') === 0 ? 1 : 0, 1, 'statement header');
+eq(stmt.indexOf('Paid "Wifi" $60.00') > 0 ? 1 : 0, 1, 'statement paid line');
+eq(stmt.indexOf('Owes $500.00 for "Rent" (paid by A)') > 0 ? 1 : 0, 1, 'statement share line');
+eq(stmt.indexOf('You owe $470.00 overall.') > 0 ? 1 : 0, 1, 'statement net verdict');
 process.exit(f ? 1 : 0);
 NODE
 )

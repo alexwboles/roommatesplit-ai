@@ -36,7 +36,7 @@
   }
 
   function blankRoommate() {
-    return { id: uid('r'), name: '', roomSize: 0 };
+  return { id: uid('r'), name: '', roomSize: 0 };
   }
 
   function blankBill() {
@@ -44,6 +44,8 @@
       id: uid('b'), name: '', amount: 0, payerId: '',
       splitRule: 'even', customShares: {}, // roommateId -> percent
       date: new Date().toISOString().slice(0, 10),
+      dueDate: '',
+      category: 'other',
       settled: false
     };
   }
@@ -235,7 +237,7 @@
     return y + '-' + p2(mo + 1) + '-' + p2(d);
   }
 
-  /* Filter + sort the bill ledger. opts: { q, payerId, sort }.
+  /* Filter + sort the bill ledger. opts: { q, payerId, category, sort }.
    * sort: 'newest' (default) | 'oldest' | 'amountDesc' | 'amountAsc' | 'name'.
    * Unsettled bills always sort above settled ones. Pure. */
   function filterBills(bills, opts) {
@@ -244,6 +246,7 @@
     var by = opts.sort || 'newest';
     var list = (bills || []).filter(function (b) {
       if (opts.payerId && b.payerId !== opts.payerId) return false;
+      if (opts.category && normalizeCategory(b.category) !== opts.category) return false;
       if (q && String(b.name || '').toLowerCase().indexOf(q) < 0) return false;
       return true;
     });
@@ -259,8 +262,97 @@
     return list;
   }
 
+    /* ---- Bill categories ---- */
+  var BILL_CATEGORIES = [
+    { id: 'rent', label: 'Rent' },
+    { id: 'utilities', label: 'Utilities' },
+    { id: 'groceries', label: 'Groceries' },
+    { id: 'internet', label: 'Internet' },
+    { id: 'subscriptions', label: 'Subscriptions' },
+    { id: 'other', label: 'Other' }
+  ];
+
+  function normalizeCategory(c) {
+    c = String(c === undefined || c === null ? '' : c).trim().toLowerCase();
+    for (var i = 0; i < BILL_CATEGORIES.length; i++) {
+      if (BILL_CATEGORIES[i].id === c) return c;
+    }
+    return 'other';
+  }
+
+  function categoryLabel(id) {
+    for (var i = 0; i < BILL_CATEGORIES.length; i++) {
+      if (BILL_CATEGORIES[i].id === id) return BILL_CATEGORIES[i].label;
+    }
+    return 'Other';
+  }
+
+  /* Spending by category: totals + per-roommate share totals, biggest first.
+   * Returns [{ category, label, total, count, perPerson: { roommateId: amount } }]. */
+  function categoryTotals(roommates, bills) {
+    var map = {};
+    (bills || []).forEach(function (b) {
+      var cat = normalizeCategory(b.category);
+      if (!map[cat]) {
+        map[cat] = { category: cat, label: categoryLabel(cat), total: 0, count: 0, perPerson: {} };
+      }
+      map[cat].total = round2(map[cat].total + num(b.amount, 0));
+      map[cat].count++;
+      var sh = shares(b, roommates);
+      Object.keys(sh).forEach(function (id) {
+        map[cat].perPerson[id] = round2(num(map[cat].perPerson[id], 0) + num(sh[id], 0));
+      });
+    });
+    return Object.keys(map).map(function (k) { return map[k]; })
+      .sort(function (a, b) { return b.total - a.total; });
+  }
+
+  /* Overdue bills: open bills with a due date before refDate (YYYY-MM-DD).
+   * Oldest due date first. Pure. */
+  function overdueBills(bills, refDate) {
+    var ref = String(refDate || new Date().toISOString().slice(0, 10));
+    return (bills || []).filter(function (b) {
+      if (b.settled) return false;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(b.dueDate || ''))) return false;
+      return b.dueDate < ref;
+    }).sort(function (a, b) { return a.dueDate < b.dueDate ? -1 : (a.dueDate > b.dueDate ? 1 : 0); });
+  }
+
+  /* Per-person plain-text statement: what they paid, their shares, net.
+   * Pure — used by the per-roommate "Statement" copy button. */
+  function statementText(roommate, roommates, bills, payments) {
+    var nm = {};
+    roommates.forEach(function (r) { nm[r.id] = r.name; });
+    var lines = ['RoommateSplit statement for ' + roommate.name + ':'];
+    var paid = 0, share = 0;
+    (bills || []).forEach(function (b) {
+      if (b.settled) return;
+      var sh = shares(b, roommates);
+      if (b.payerId === roommate.id) {
+        paid = round2(paid + num(b.amount, 0));
+        lines.push('- Paid "' + b.name + '" ' + money(b.amount));
+      }
+      var mine = round2(num(sh[roommate.id], 0));
+      if (mine > 0) {
+        share = round2(share + mine);
+        if (b.payerId !== roommate.id) {
+          lines.push('- Owes ' + money(mine) + ' for "' + b.name + '" (paid by ' +
+            (nm[b.payerId] || 'someone') + ')');
+        }
+      }
+    });
+    var net = round2(paid - share);
+    lines.push('Total paid: ' + money(paid) + ' · total share: ' + money(share));
+    lines.push(net >= 0
+      ? 'Others owe you ' + money(net) + ' overall.'
+      : 'You owe ' + money(-net) + ' overall.');
+    return lines.join('\n');
+  }
+
+
   return {
     SPLIT_RULES: SPLIT_RULES,
+    BILL_CATEGORIES: BILL_CATEGORIES,
     num: num,
     money: money,
     uid: uid,
@@ -276,6 +368,11 @@
     billsCSV: billsCSV,
     summaryText: summaryText,
     addMonths: addMonths,
-    filterBills: filterBills
+    filterBills: filterBills,
+    normalizeCategory: normalizeCategory,
+    categoryLabel: categoryLabel,
+    categoryTotals: categoryTotals,
+    overdueBills: overdueBills,
+    statementText: statementText
   };
 }));

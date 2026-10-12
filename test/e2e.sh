@@ -176,6 +176,41 @@ const byId = id => rms.find(r => r.id === id).name;
     : bad('flow12: summary off', txt);
 }
 
+// Flow 13: categories + overdue + statements on the sample household
+{
+  const rent = bills.find(b => b.name === 'Rent — Oct');
+  rent.category = 'rent'; rent.dueDate = '2026-10-05';
+  const elec = bills.find(b => b.name === 'Electric');
+  elec.category = 'utilities'; elec.dueDate = '2026-09-15';
+  const groc = bills.find(b => b.name === 'Groceries');
+  groc.category = 'groceries';
+  const ct = S.categoryTotals(rms, bills);
+  const labels = ct.map(c => c.label);
+  (ct.length === 3 && ct[0].label === 'Rent' && ct[0].total === 2400 && ct[0].count === 1)
+    ? ok('flow13: category totals ranked biggest-first, rent on top')
+    : bad('flow13: category totals off', JSON.stringify(ct.map(c => [c.label, c.total])));
+  (labels.indexOf('Utilities') > -1 && labels.indexOf('Groceries') > -1)
+    ? ok('flow13: all used categories reported')
+    : bad('flow13: missing categories', labels.join(','));
+  const rentRow = ct.find(c => c.label === 'Rent');
+  (close(rentRow.perPerson['r-alex'], 981.82) && close(rentRow.perPerson['r-sam'], 763.64) && close(rentRow.perPerson['r-jo'], 654.54))
+    ? ok('flow13: rent per-person shares match by-room-size split')
+    : bad('flow13: rent shares off', JSON.stringify(rentRow.perPerson));
+  const over = S.overdueBills(bills, '2026-10-12');
+  (over.length === 2 && over[0].name === 'Electric' && over[1].name === 'Rent — Oct')
+    ? ok('flow13: overdue flags electric + rent, oldest first')
+    : bad('flow13: overdue off', JSON.stringify(over.map(b => b.name)));
+  const fc = S.filterBills(bills, { category: 'groceries' });
+  (fc.length === 1 && fc[0].name === 'Groceries')
+    ? ok('flow13: category filter narrows the ledger')
+    : bad('flow13: category filter off');
+  const stmt = S.statementText(rms.find(r => r.id === 'r-sam'), rms, bills, []);
+  (stmt.indexOf('RoommateSplit statement for Sam') === 0 && stmt.indexOf('Paid "Electric"') > 0 &&
+   /You owe \$[\d,]+\.\d{2} overall\./.test(stmt))
+    ? ok('flow13: per-person statement reads correctly for Sam')
+    : bad('flow13: statement off', stmt);
+}
+
 console.log('---');
 console.log('E2E PASS: ' + pass + '  FAIL: ' + fail);
 process.exit(fail ? 1 : 0);
