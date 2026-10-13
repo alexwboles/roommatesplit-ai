@@ -123,11 +123,12 @@ eq(lines.length, csvBills.length + 1, 'CSV has header + one row per bill');
 let csvOK = true;
 csvBills.forEach((b, i) => {
   const cols = lines[i + 1].match(/"[^"]*"/g).map(s => s.slice(1, -1));
-  const shareCols = cols.slice(6).map(Number);
+  const shareCols = cols.slice(8).map(Number);
   if (Math.abs(shareCols.reduce((x, y) => x + y, 0) - b.amount) > 0.005) csvOK = false;
-  if (cols[0] !== b.name || cols[3] !== Number(b.amount).toFixed(2)) csvOK = false;
+  if (cols[0] !== b.name || cols[4] !== Number(b.amount).toFixed(2)) csvOK = false;
+  if (cols[5] !== S.categoryLabel(S.normalizeCategory(b.category))) csvOK = false;
 });
-if (lines[0].indexOf('"Alex share"') > 0 && lines[0].indexOf('"Bill","Date"') === 0 && csvOK) {
+if (lines[0].indexOf('"Alex share"') > 0 && lines[0].indexOf('"Bill","Date","Due date"') === 0 && lines[0].indexOf('"Category"') > 0 && csvOK) {
   n++; console.log('PASS: CSV header + rows reconcile to bill totals');
 } else { f++; console.log('FAIL: CSV rows malformed'); }
 
@@ -211,6 +212,28 @@ eq(stmt.indexOf('RoommateSplit statement for B') === 0 ? 1 : 0, 1, 'statement he
 eq(stmt.indexOf('Paid "Wifi" $60.00') > 0 ? 1 : 0, 1, 'statement paid line');
 eq(stmt.indexOf('Owes $500.00 for "Rent" (paid by A)') > 0 ? 1 : 0, 1, 'statement share line');
 eq(stmt.indexOf('You owe $470.00 overall.') > 0 ? 1 : 0, 1, 'statement net verdict');
+eq((() => {
+  const b = Object.assign(S.blankBill(), { name: 'Rent', amount: 1200, payerId: 'r1', date: '2026-09-01', dueDate: '2026-09-05', repeats: 'monthly', settled: true });
+  b.id = 'b-rent';
+  const sp = S.spawnRecurring([b]);
+  if (sp.length !== 1) return 'spawned ' + sp.length;
+  const n = sp[0];
+  if (n.date !== '2026-10-01' || n.dueDate !== '2026-10-05') return 'dates ' + n.date + '/' + n.dueDate;
+  if (n.settled || n.recurOf !== 'b-rent' || n.repeats !== 'monthly' || n.amount !== 1200) return 'fields';
+  if (S.spawnRecurring([b].concat(sp)).length !== 0) return 'double spawn';
+  return 1;
+})(), 1, 'recurring: settled monthly bill spawns next month once');
+eq((() => {
+  const u = Object.assign(S.blankBill(), { name: 'Old', amount: 50, date: '2026-01-01', repeats: 'monthly', settled: false });
+  u.id = 'b-old';
+  return S.spawnRecurring([u]).length === 0 ? 1 : 'unsettled spawned';
+})(), 1, 'recurring: unsettled bill spawns nothing');
+eq(S.reminderText('Maya', 'Jo', 42.5).indexOf('Maya') === 3 && S.reminderText('Maya', 'Jo', 42.5).indexOf('$42.50') > 0 ? 1 : 0, 1, 'reminder text names + amount');
+eq((() => {
+  const csv = S.billsCSV([{ id: 'r1', name: 'Jo' }], [{ name: 'Rent', date: '2026-09-01', dueDate: '2026-09-05', payerId: 'r1', amount: 1200, splitRule: 'even', category: 'rent', settled: false }]);
+  const head = csv.split('\n')[0];
+  return head.indexOf('Category') >= 0 && head.indexOf('Due date') >= 0 && csv.indexOf('2026-09-05') >= 0 && csv.indexOf('Rent') >= 0 ? 1 : head;
+})(), 1, 'CSV export carries category + due date');
 process.exit(f ? 1 : 0);
 NODE
 )

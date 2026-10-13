@@ -145,10 +145,29 @@
           : (v < -0.004 ? 'owes ' + S.money(-v) : 'all settled up');
         var d = document.createElement('div');
         d.className = 'bal-row';
-        d.innerHTML = '<div class="nm">' + esc(r.name) + '</div><div class="' + cls + '">' + txt + '</div>';
+        d.innerHTML = '<div class="nm">' + esc(r.name) + '</div><div class="' + cls + '">' + txt + '</div>' +
+          (cls === 'owes'
+            ? '<button class="small ghost" data-remind="' + esc(r.id) + '" title="Copy a polite payment reminder">Remind</button>'
+            : '');
         box.appendChild(d);
       });
     }
+    box.querySelectorAll('[data-remind]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var rid = btn.getAttribute('data-remind');
+        var st2 = getState();
+        var net2 = S.balances(st2.rms, st2.bills, st2.pays);
+        var plan2 = S.settle(net2);
+        var step = null;
+        plan2.forEach(function (p) { if (p.fromId === rid) step = step || p; });
+        if (!step) return;
+        var msg = S.reminderText(nameOf(st2.rms, step.fromId), nameOf(st2.rms, step.toId), step.amount);
+        var label = btn.textContent;
+        var done = function () { btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = label; }, 1200); };
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(msg).then(done, done);
+        else done();
+      });
+    });
     var planBox = el('plan');
     planBox.innerHTML = '';
     var plan = S.settle(net);
@@ -267,7 +286,8 @@
         ' · <span class="cat-pill">' + esc(S.categoryLabel(S.normalizeCategory(b.category))) + '</span>' +
         (b.dueDate ? ' · due ' + esc(b.dueDate) : '') +
         (isOverdue ? ' <span class="overdue-pill">OVERDUE</span>' : '') +
-        (b.settled ? '<span class="settled-pill">Settled</span>' : '') + '</div>' +
+        (b.settled ? '<span class="settled-pill">Settled</span>' : '') +
+        (b.repeats === 'monthly' ? '<span class="recur-pill">monthly</span>' : '') + '</div>' +
         '<div class="shares">' + shareTxt + '</div></div>' +
         '<div class="bill-actions">' +
         '<button class="small" data-edit-bill="' + b.id + '">Edit</button>' +
@@ -289,7 +309,7 @@
         bills.forEach(function (x) {
           if (x.id === b.getAttribute('data-toggle-bill')) x.settled = !x.settled;
         });
-        save(LS_BILL, bills);
+        spawnRecurring(bills);
         render();
       });
     });
@@ -378,6 +398,9 @@
       '<label>Due date (optional)<input id="m-b-due" type="date" value="' + esc(b.dueDate || '') + '"></label>' +
       '<label>Paid by<select id="m-b-payer">' + payerOpts + '</select></label>' +
       '<label>Category<select id="m-b-cat">' + catOpts + '</select></label>' +
+      '<label class="check"><input id="m-b-recur" type="checkbox"' +
+      (b.repeats === 'monthly' ? ' checked' : '') +
+      '> <span>Repeats monthly — auto-create next month when settled</span></label>' +
       '</div>' +
       '<label>Split rule<select id="m-b-rule">' + ruleOpts + '</select></label>' +
       '<div id="m-custom" style="display:' + (b.splitRule === 'custom' ? '' : 'none') + '">' +
@@ -394,6 +417,7 @@
       b.date = el('m-b-date').value;
       b.dueDate = el('m-b-due').value;
       b.category = S.normalizeCategory(el('m-b-cat').value);
+      b.repeats = el('m-b-recur').checked ? 'monthly' : 'none';
       b.payerId = el('m-b-payer').value;
       b.splitRule = el('m-b-rule').value;
       b.customShares = {};
@@ -470,7 +494,19 @@
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
   }
 
+  // Auto-create next-month instances for settled monthly bills. Returns count.
+  function spawnRecurring(bills) {
+    var fresh = S.spawnRecurring(bills);
+    if (fresh.length) {
+      fresh.forEach(function (b) { bills.push(b); });
+      save(LS_BILL, bills);
+    }
+    return fresh.length;
+  }
+
   function init() {
+    // Recurring bills: pick up where the last session left off.
+    spawnRecurring(load(LS_BILL, []));
     el('add-rm').addEventListener('click', function () { openRoommateModal(null); });
     el('add-bill').addEventListener('click', function () {
       if (!load(LS_RM, []).length) {

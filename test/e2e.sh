@@ -156,8 +156,8 @@ const byId = id => rms.find(r => r.id === id).name;
   const dataRows = rows.slice(1);
   const reconcile = dataRows.every((row, i) => {
     const cols = row.match(/"[^"]*"/g).map(s => s.slice(1, -1));
-    const sum = cols.slice(6).map(Number).reduce((x, y) => x + y, 0);
-    return close(sum, bills[i].amount) && cols[5] === 'open';
+    const sum = cols.slice(8).map(Number).reduce((x, y) => x + y, 0);
+    return close(sum, bills[i].amount) && cols[7] === 'open' && cols[5] === S.categoryLabel(S.normalizeCategory(bills[i].category));
   });
   (rows.length === bills.length + 1 && headerOK && reconcile)
     ? ok('flow11: CSV exports full ledger, shares reconcile to totals')
@@ -204,6 +204,23 @@ const byId = id => rms.find(r => r.id === id).name;
   (fc.length === 1 && fc[0].name === 'Groceries')
     ? ok('flow13: category filter narrows the ledger')
     : bad('flow13: category filter off');
+  // sweep-2: recurring chain lives across months; UI wired
+  const rentBill = Object.assign(S.blankBill(), { name: 'Rent', amount: 1000, payerId: 'r-a', date: '2026-09-01', repeats: 'monthly', settled: true });
+  rentBill.id = 'b-chain';
+  const gen1 = S.spawnRecurring([rentBill]);
+  (gen1.length === 1 && gen1[0].date === '2026-10-01')
+    ? ok('flow14: settled monthly rent spawns October instance')
+    : bad('flow14: recurring spawn off', JSON.stringify(gen1));
+  const gen2src = [rentBill].concat(gen1).map(b => Object.assign({}, b, { settled: true }));
+  const gen2 = S.spawnRecurring(gen2src);
+  (gen2.length === 1 && gen2[0].date === '2026-11-01' && gen2[0].recurOf === gen1[0].id)
+    ? ok('flow14: chain continues — November spawns from October')
+    : bad('flow14: chain off', JSON.stringify(gen2));
+  const fs = require('fs');
+  const app = fs.readFileSync('js/app.js', 'utf8');
+  (app.indexOf('m-b-recur') > 0 && app.indexOf('spawnRecurring') > 0 && app.indexOf('data-remind') > 0 && app.indexOf('recur-pill') > 0)
+    ? ok('flow14: recurring + remind UI wired in app.js')
+    : bad('flow14: UI wiring missing');
   const stmt = S.statementText(rms.find(r => r.id === 'r-sam'), rms, bills, []);
   (stmt.indexOf('RoommateSplit statement for Sam') === 0 && stmt.indexOf('Paid "Electric"') > 0 &&
    /You owe \$[\d,]+\.\d{2} overall\./.test(stmt))

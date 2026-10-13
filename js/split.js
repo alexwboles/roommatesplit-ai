@@ -46,7 +46,9 @@
       date: new Date().toISOString().slice(0, 10),
       dueDate: '',
       category: 'other',
-      settled: false
+      settled: false,
+      repeats: 'none',   // 'none' | 'monthly'
+      recurOf: ''        // id of the bill this one was auto-generated from
     };
   }
 
@@ -185,7 +187,7 @@
    * per-roommate exact shares. Pure — used by the UI download button
    * and exercised directly by the tests. */
   function billsCSV(roommates, bills) {
-    var header = ['Bill', 'Date', 'Payer', 'Amount', 'Split rule', 'Status'];
+    var header = ['Bill', 'Date', 'Due date', 'Payer', 'Amount', 'Category', 'Split rule', 'Status'];
     roommates.forEach(function (r) { header.push(r.name + ' share'); });
     var lines = [header.map(csvCell).join(',')];
     (bills || []).forEach(function (b) {
@@ -194,9 +196,9 @@
       roommates.forEach(function (r) { if (r.id === b.payerId) payer = r.name; });
       var rule = b.splitRule === 'bysize' ? 'by room size'
         : (b.splitRule === 'custom' ? 'custom %' : 'even');
-      var row = [b.name, b.date || '', payer,
-                 round2(num(b.amount, 0)).toFixed(2), rule,
-                 b.settled ? 'settled' : 'open'];
+      var row = [b.name, b.date || '', b.dueDate || '', payer,
+                 round2(num(b.amount, 0)).toFixed(2), categoryLabel(normalizeCategory(b.category)), rule,
+                 b.settled ? 'settled' : 'open'];      
       roommates.forEach(function (r) {
         row.push(round2(num(sh[r.id], 0)).toFixed(2));
       });
@@ -262,7 +264,66 @@
     return list;
   }
 
-    /* ---- Bill categories ---- */
+  /* Recurring bills: when a "monthly" bill is settled, spawn the next month's
+   * instance (same amount, payer, split, category; dates advanced one month).
+   * Only spawns when the latest bill in a chain is settled, so nothing is
+   * duplicated and unsettled old bills don't snowball. Returns the new bills
+   * to append (each carries repeats:'monthly' + recurOf, so the chain lives on).
+   * Pure — the UI calls it on load and after toggling settled. */
+  function spawnRecurring(bills) {
+    var byId = {};
+    (bills || []).forEach(function (b) { byId[b.id] = b; });
+    // chain key = original bill id (follow recurOf to the root)
+    function chainRoot(b) {
+      var seen = {};
+      while (b && b.recurOf && byId[b.recurOf] && !seen[b.id]) {
+        seen[b.id] = true;
+        b = byId[b.recurOf];
+      }
+      return b ? b.id : null;
+    }
+    var chains = {};
+    (bills || []).forEach(function (b) {
+      var root = chainRoot(b);
+      if (!root) return;
+      var cur = chains[root];
+      if (!cur || String(b.date || '') > String(cur.date || '')) chains[root] = b;
+    });
+    var spawned = [];
+    Object.keys(chains).forEach(function (root) {
+      var latest = chains[root];
+      if (!latest || latest.repeats !== 'monthly' || !latest.settled) return;
+      // successor already exists?
+      var hasNext = (bills || []).concat(spawned).some(function (b) {
+        return b.recurOf === latest.id;
+      });
+      if (hasNext) return;
+      var nb = blankBill();
+      nb.name = latest.name;
+      nb.amount = num(latest.amount, 0);
+      nb.payerId = latest.payerId;
+      nb.splitRule = latest.splitRule;
+      nb.customShares = Object.assign({}, latest.customShares);
+      nb.category = normalizeCategory(latest.category);
+      nb.date = addMonths(latest.date, 1) || latest.date;
+      nb.dueDate = latest.dueDate ? addMonths(latest.dueDate, 1) : '';
+      nb.repeats = 'monthly';
+      nb.recurOf = latest.id;
+      nb.settled = false;
+      spawned.push(nb);
+    });
+    return spawned;
+  }
+
+  /* Copy-ready payment reminder: a polite nudge naming who owes whom. */
+  function reminderText(debtorName, creditorName, amount) {
+    var d = String(debtorName || 'there').trim() || 'there';
+    var c = String(creditorName || 'everyone').trim() || 'everyone';
+    return 'Hi ' + d + ' — quick RoommateSplit reminder: you owe ' + c + ' ' +
+      money(amount) + ' for shared bills. No rush, just wanted to flag it before it piles up!';
+  }
+
+  /* ---- Bill categories ---- */
   var BILL_CATEGORIES = [
     { id: 'rent', label: 'Rent' },
     { id: 'utilities', label: 'Utilities' },
@@ -373,6 +434,8 @@
     categoryLabel: categoryLabel,
     categoryTotals: categoryTotals,
     overdueBills: overdueBills,
-    statementText: statementText
+    statementText: statementText,
+    spawnRecurring: spawnRecurring,
+    reminderText: reminderText
   };
 }));
