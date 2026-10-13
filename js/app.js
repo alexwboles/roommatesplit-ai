@@ -138,14 +138,33 @@
     box.innerHTML = '';
     if (!st.rms.length) { box.innerHTML = '<div class="empty">—</div>'; }
     else {
+      var summary = S.householdSummary(net);
+      var banner = document.createElement('div');
+      banner.className = 'net-banner';
+      if (summary.settled) {
+        banner.innerHTML = '<div class="net-settled">All settled up — nobody owes anybody. ✓</div>';
+      } else {
+        banner.innerHTML = '<div class="net-top"><div><span class="lbl">Total unsettled</span><strong>' +
+          S.money(summary.unsettled) + '</strong></div><div class="net-counts">' +
+          summary.debtors.length + ' owe &middot; ' + summary.creditors.length + ' are owed</div></div>' +
+          '<div class="netbar">' + summary.debtors.map(function (d) {
+            var pct = summary.unsettled > 0 ? Math.max(4, Math.round(d.amount / summary.unsettled * 100)) : 0;
+            return '<i style="width:' + pct + '%" title="' + esc(nameOf(st.rms, d.id)) + ' owes ' + S.money(d.amount) + '"></i>';
+          }).join('') + '</div>';
+      }
+      box.appendChild(banner);
+      var maxAbs = 0;
+      st.rms.forEach(function (r) { maxAbs = Math.max(maxAbs, Math.abs(net[r.id] || 0)); });
       st.rms.forEach(function (r) {
         var v = net[r.id] || 0;
         var cls = v > 0.004 ? 'owed' : (v < -0.004 ? 'owes' : 'even');
         var txt = v > 0.004 ? 'is owed ' + S.money(v)
           : (v < -0.004 ? 'owes ' + S.money(-v) : 'all settled up');
+        var w = maxAbs > 0 ? Math.max(3, Math.round(Math.abs(v) / maxAbs * 100)) : 0;
         var d = document.createElement('div');
         d.className = 'bal-row';
         d.innerHTML = '<div class="nm">' + esc(r.name) + '</div><div class="' + cls + '">' + txt + '</div>' +
+          '<div class="balbar ' + cls + '"><i style="width:' + w + '%"></i></div>' +
           (cls === 'owes'
             ? '<button class="small ghost" data-remind="' + esc(r.id) + '" title="Copy a polite payment reminder">Remind</button>'
             : '');

@@ -179,6 +179,27 @@
   function totalOwedTo(net, id) { return Math.max(0, round2(num(net[id], 0))); }
   function totalOwes(net, id) { return Math.max(0, round2(-num(net[id], 0))); }
 
+  /* Household-level summary of a net-balances map: total unsettled money,
+     debtor/creditor counts, and each debtor's share of the hole. Pure. */
+  function householdSummary(net) {
+    var ids = Object.keys(net || {});
+    var debtors = [], creditors = [], unsettled = 0;
+    ids.forEach(function (id) {
+      var v = round2(num(net[id], 0));
+      if (v > 0.004) { unsettled = round2(unsettled + v); creditors.push({ id: id, amount: v }); }
+      else if (v < -0.004) { debtors.push({ id: id, amount: round2(-v) }); }
+    });
+    debtors.sort(function (a, b) { return b.amount - a.amount; });
+    creditors.sort(function (a, b) { return b.amount - a.amount; });
+    return {
+      unsettled: unsettled,
+      debtors: debtors,
+      creditors: creditors,
+      settled: ids.length > 0 && debtors.length === 0
+    };
+  }
+
+
   function csvCell(v) {
     return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
   }
@@ -426,6 +447,7 @@
     settle: settle,
     totalOwedTo: totalOwedTo,
     totalOwes: totalOwes,
+    householdSummary: householdSummary,
     billsCSV: billsCSV,
     summaryText: summaryText,
     addMonths: addMonths,

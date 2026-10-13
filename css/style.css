@@ -333,3 +333,19 @@ label.check input { width: auto; }
 .bal-row { display: flex; align-items: center; gap: .75rem; }
 .bal-row .nm { font-weight: 600; }
 .bal-row .nm + div { flex: 1; }
+
+/* ---------- net banner + balance bars ---------- */
+.net-banner{background:var(--card);border:1px solid var(--line);padding:.9rem 1rem;margin-bottom:.6rem}
+.net-top{display:flex;justify-content:space-between;align-items:baseline;gap:1rem}
+.net-top .lbl{display:block;font-size:.68rem;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700}
+.net-top strong{font-size:1.5rem;font-variant-numeric:tabular-nums}
+.net-counts{font-size:.85rem;color:var(--muted);white-space:nowrap}
+.netbar{display:flex;height:10px;background:#eee5d3;margin-top:.6rem;overflow:hidden}
+.netbar i{display:block;background:var(--red,#b23a3a);height:100%}
+.net-settled{font-weight:700;color:var(--green-deep)}
+.bal-row{flex-wrap:wrap;row-gap:.35rem}
+.balbar{flex:0 0 100%;height:6px;background:#f0e9d8}
+.balbar i{display:block;height:100%}
+.balbar.owes i{background:var(--red,#b23a3a)}
+.balbar.owed i{background:var(--green-deep)}
+.balbar.even i{background:transparent}

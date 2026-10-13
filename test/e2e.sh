@@ -229,6 +229,23 @@ const byId = id => rms.find(r => r.id === id).name;
 }
 
 console.log('---');
+
+// Flow 8: household summary tracks the real ledger end to end
+(function () {
+  const net = S.balances(rms, bills, []);
+  const h = S.householdSummary(net);
+  const expectUnsettled = Object.keys(net).reduce((s, id) => s + Math.max(0, net[id]), 0);
+  if (!close(h.unsettled, expectUnsettled)) return bad('summary unsettled', h.unsettled + ' vs ' + expectUnsettled);
+  if (h.debtors.length + h.creditors.length > rms.length) return bad('summary counts');
+  // recording the full settle plan zeroes the summary
+  const plan = S.settle(net);
+  let pays = [];
+  plan.forEach(p => { pays.push({ fromId: p.fromId, toId: p.toId, amount: p.amount }); });
+  const net2 = S.balances(rms, bills, pays);
+  const h2 = S.householdSummary(net2);
+  if (!h2.settled || h2.unsettled !== 0) return bad('summary after settle', JSON.stringify(h2));
+  ok('household summary follows the ledger to settled');
+})();
 console.log('E2E PASS: ' + pass + '  FAIL: ' + fail);
 process.exit(fail ? 1 : 0);
 NODE

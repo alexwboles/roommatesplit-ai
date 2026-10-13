@@ -242,5 +242,19 @@ node_fails=$(echo "$node_out" | grep -c '^FAIL') || true
 [ "$node_fails" = "0" ] && ok "node logic suite green" || bad "node logic suite had $node_fails failures"
 
 echo "---"
+grep -q 'householdSummary' js/split.js && ok "householdSummary in split.js" || bad "householdSummary missing"
+grep -q 'net-banner' js/app.js && ok "net banner in app.js" || bad "net banner missing"
+grep -q 'balbar' js/app.js && ok "balance bars in app.js" || bad "balance bars missing"
+grep -q 'netbar' css/style.css && ok "net banner CSS present" || bad "net banner CSS missing"
+node -e "
+const S = require('./js/split.js');
+const h = S.householdSummary({ a: 120.5, b: -80.25, c: -40.25, d: 0 });
+if (h.unsettled !== 120.5) throw new Error('unsettled=' + h.unsettled);
+if (h.debtors.length !== 2 || h.debtors[0].id !== 'b' || h.debtors[0].amount !== 80.25) throw new Error('debtors');
+if (h.creditors.length !== 1 || h.settled) throw new Error('creditors/settled');
+if (!S.householdSummary({ a: 0, b: 0 }).settled) throw new Error('all-even should be settled');
+if (S.householdSummary({}).settled) throw new Error('empty should not be settled');
+" && ok "householdSummary logic" || bad "householdSummary logic"
+
 if [ "$fail" = "0" ]; then echo "=== smoke: $pass passed, 0 failed ==="; exit 0;
 else echo "=== smoke: $pass passed, $fail failed ==="; exit 1; fi
